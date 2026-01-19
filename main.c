@@ -3,6 +3,7 @@
 #include <cjson/cJSON.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <stdio.h>
 
 #define TIMEOUT 15L
 
@@ -21,6 +22,8 @@ struct location {
 struct myLocation{
     char *country;
     char *city;
+    char *serverCity;
+    char *host;
 };
 
 double download_test(const char *url)
@@ -143,6 +146,48 @@ void find_location(struct location *loc)
     curl_easy_cleanup(curl);
 }
 
+cJSON* get_server_list()
+{
+    FILE *fp;
+    fp = fopen("speedtest_server_list.json", "r");
+    fseek(fp, 0L, SEEK_END);
+    long size = ftell(fp);
+    rewind(fp);
+    char data[size]; 
+    fread(data, 1, size, fp);
+    cJSON *servers = cJSON_Parse(data);
+    fclose(fp);
+    return servers;
+}
+
+void best_server_by_location(struct myLocation *mine, cJSON *servers)
+{
+    for(int i = 0; i<cJSON_GetArraySize(servers); i++)
+    {
+        cJSON *tmp = cJSON_GetArrayItem(servers, i);
+        cJSON *country = cJSON_GetObjectItem(tmp, "country");
+        cJSON *city = cJSON_GetObjectItem(tmp, "city");
+        if(strcmp(city->valuestring, mine->city) == 0)
+        {
+            mine->host = cJSON_Print(cJSON_GetObjectItem(tmp, "host"));
+            mine->serverCity = cJSON_Print(city);
+            return;
+        }
+        if(strcmp(city->valuestring, mine->city) == 0)
+        {
+            mine->host = cJSON_Print(cJSON_GetObjectItem(tmp, "host"));
+            mine->serverCity = cJSON_Print(city);
+        }
+    }
+    if(mine->serverCity == NULL && mine->host == NULL)
+    {
+        printf("Could not find server in user country, defaulting to first server in list...");
+        cJSON *first = cJSON_GetArrayItem(servers, 0);
+        mine->serverCity = cJSON_Print(cJSON_GetObjectItem(first, "city"));
+        mine->host = cJSON_Print(cJSON_GetObjectItem(first, "host"));
+    }
+}
+
 int main(int argc, char **argv)
 {
     const char *dl_test_url = "speedtest.a-mobile.biz:8080/speedtest/random4000x4000.jpg";
@@ -166,12 +211,16 @@ int main(int argc, char **argv)
     mine.city = city->valuestring;
 
     if(mine.country != NULL && mine.city != NULL){
-        printf("Country: %s City: %s\n", mine.country, mine.city);
+        printf("my Country: %s City: %s\n", mine.country, mine.city);
     }
-    
-    cJSON_Delete(json);
-    free(loc->json);
-    free(loc);
+
+    cJSON *servers = get_server_list();
+    best_server_by_location(&mine, servers);
+    printf("best server host(%s): %s\n", mine.serverCity, mine.host);
+
+    // cJSON_Delete(json);
+    // free(loc->json);
+    // free(loc);
     
     return 0;
 }
